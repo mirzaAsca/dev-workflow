@@ -1,0 +1,1093 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<meta name="description" content="A proposed shared development workflow for FlyRank: agent implementation, independent review, and human release approval, rolled out in three short stages.">
+<title>FlyRank Shared Dev Workflow</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800&amp;family=Geist+Mono:wght@400;500;600&amp;display=swap">
+<style>
+/* Layout: a deck by default (Space reveals one piece at a time), a plain scrolling page in full view.
+   One picture per slide. Color means who acts: human / builder agent / reviewer agent / automation. */
+:root{
+  --bg:#f8faf9; --sunken:#f0f4f2; --card:#ffffff; --ink:#051f21;
+  --muted:rgba(5,31,33,.76); --soft:rgba(5,31,33,.58);
+  --line:rgba(5,31,33,.1); --line-2:rgba(5,31,33,.24);
+  --human:#c2570a; --builder:#2f6bf0; --reviewer:#7a4be0; --script:#1f7f7d;
+  --ok:#1a7a4a; --warn:#a86400; --bad:#c43c2c;
+  --font-d:'Geist',ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif;
+  --font-b:'Geist',ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif;
+  --font-m:'Geist Mono',ui-monospace,'SF Mono',Menlo,Consolas,monospace;
+  --r:14px;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#030f10; --sunken:#071e20; --card:#051f21; --ink:#f8faf9;
+    --muted:rgba(255,255,255,.78); --soft:rgba(255,255,255,.6);
+    --line:rgba(255,255,255,.1); --line-2:rgba(255,255,255,.26);
+    --human:#ffab5c; --builder:#7ba6ff; --reviewer:#b49bff; --script:#5ec6a9;
+    --ok:#54e399; --warn:#f2c060; --bad:#ff8a7a; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#030f10; --sunken:#071e20; --card:#051f21; --ink:#f8faf9;
+  --muted:rgba(255,255,255,.78); --soft:rgba(255,255,255,.6);
+  --line:rgba(255,255,255,.1); --line-2:rgba(255,255,255,.26);
+  --human:#ffab5c; --builder:#7ba6ff; --reviewer:#b49bff; --script:#5ec6a9;
+  --ok:#54e399; --warn:#f2c060; --bad:#ff8a7a; color-scheme:dark;
+}
+
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:400 16px/1.5 var(--font-b);-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit}
+ul,ol{margin:0;padding:0;list-style:none}
+h1,h2,h3,h4,p{margin:0}
+:focus-visible{outline:2px solid var(--ok);outline-offset:2px}
+
+.a-human{--a:var(--human)} .a-builder{--a:var(--builder)} .a-reviewer{--a:var(--reviewer)} .a-script{--a:var(--script)}
+.ic{width:1.15em;height:1.15em;flex:none;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+
+.wrap{max-width:1120px;margin:0 auto;padding-inline:20px;padding-block:28px 96px}
+.sec{padding-top:80px;scroll-margin-top:52px}
+.sec > .slide + .slide{margin-top:52px}
+h2{font:700 clamp(1.6rem,3.2vw,2.3rem)/1.08 var(--font-d);letter-spacing:-.028em;text-wrap:balance}
+h3{font:700 1.35rem/1.15 var(--font-d);letter-spacing:-.02em;text-wrap:balance}
+.head{margin-bottom:24px}
+.slide-note{margin:-12px 0 20px;color:var(--soft);font-size:.88rem;line-height:1.4}
+.coverage{display:flex;flex-wrap:wrap;gap:7px;margin-top:14px}
+.coverage li{padding:5px 9px;border:1px solid var(--line-2);border-radius:8px;color:var(--muted);font-size:.82rem}
+.setup .evidence{margin-top:12px;color:var(--muted);font-size:.88rem}
+.stg{display:none;font:600 12px var(--font-m);letter-spacing:.06em;color:var(--a);margin-right:10px;vertical-align:.15em}
+
+/* ---------- hero ---------- */
+.hero{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,.95fr);gap:40px;align-items:center;padding-top:20px}
+.eyebrow{display:block;font:600 12px var(--font-m);letter-spacing:.12em;text-transform:uppercase;color:var(--soft);margin-bottom:18px}
+h1{font:800 clamp(2.4rem,6vw,4.4rem)/.98 var(--font-d);letter-spacing:-.045em;text-wrap:balance}
+.composer{background:var(--card);border:1px solid var(--line);border-radius:18px;overflow:hidden}
+.comp-top{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:12px 16px;border-bottom:1px solid var(--line);color:var(--soft);font:500 12px var(--font-m)}
+.comp-body{padding:18px;font:500 1.05rem/1.55 var(--font-b);display:grid}
+.comp-body > span{grid-area:1/1}
+.ghost{visibility:hidden}
+.caret{display:inline-block;width:2px;height:1.1em;background:var(--builder);vertical-align:-0.18em;margin-left:2px;animation:blink 1s steps(2) infinite}
+@keyframes blink{50%{opacity:0}}
+.moves{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin-top:36px}
+.move{position:relative;display:flex;align-items:center;gap:12px;padding:16px;border-radius:var(--r);background:var(--card);border:1px solid var(--line)}
+.move-ic{width:40px;height:40px;flex:none;border-radius:12px;display:grid;place-items:center;color:var(--a);background:color-mix(in srgb,var(--a) 13%,var(--card));font-size:20px}
+.move b{font:600 1.05rem/1.2 var(--font-d);letter-spacing:-.01em}
+.move:not(:last-child)::after{content:"";position:absolute;right:-11px;top:50%;width:7px;height:7px;border-top:2px solid var(--line-2);border-right:2px solid var(--line-2);transform:translateY(-50%) rotate(45deg)}
+
+.nav{position:sticky;top:calc(env(safe-area-inset-top,0px) + 8px);z-index:10;display:flex;flex-wrap:wrap;justify-content:center;gap:4px;width:max-content;max-width:100%;margin:28px auto 0;padding:4px;
+  border-radius:999px;background:color-mix(in srgb,var(--card) 88%,transparent);backdrop-filter:blur(10px);border:1px solid var(--line)}
+.nav button{border:0;background:none;padding:7px 14px;border-radius:999px;font:500 13px var(--font-b);color:var(--muted);cursor:pointer}
+.nav button:hover{background:var(--sunken);color:var(--ink)}
+
+/* ---------- rollout timeline ---------- */
+.tl{display:grid;grid-template-columns:auto repeat(3,minmax(0,1fr));gap:30px;align-items:stretch}
+.tl > li{position:relative;min-width:0}
+.tl > li:not(:last-child)::after{content:'→';position:absolute;right:-23px;top:50%;transform:translateY(-50%);color:var(--soft);font-size:18px}
+.tl-start{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;min-width:116px;padding:16px 14px;border-radius:var(--r);
+  border:1px solid var(--human);background:color-mix(in srgb,var(--human) 8%,var(--card))}
+.tl-start .ic{font-size:26px;color:var(--human)}
+.tl-start b{font:600 1.05rem/1.2 var(--font-d)}
+.tl-stage button{display:flex;flex-direction:column;align-items:flex-start;gap:6px;width:100%;height:100%;padding:16px;border-radius:var(--r);border:1px solid var(--line);background:var(--card);text-align:left;cursor:pointer;transition:border-color .15s,box-shadow .15s}
+.tl-stage button:hover{border-color:var(--a);box-shadow:0 0 0 3px color-mix(in srgb,var(--a) 16%,transparent)}
+.tl-stage small{font:600 12px var(--font-m);color:var(--a);letter-spacing:.05em}
+.tl-stage b{font:600 1.2rem/1.2 var(--font-d);letter-spacing:-.015em}
+.tl-bar{display:grid;grid-template-columns:repeat(3,minmax(0,1fr)) auto;gap:5px;width:100%;margin-top:auto;padding-top:10px}
+.tl-cell{display:inline-flex;align-items:center;justify-content:center;gap:5px;height:36px;border-radius:8px;border:1px solid color-mix(in srgb,var(--a) 45%,transparent);
+  font:500 11px var(--font-m);color:var(--muted);white-space:nowrap;transition:background .35s,color .35s,border-color .35s}
+.tl-cell:nth-child(2){transition-delay:.3s} .tl-cell:nth-child(3){transition-delay:.6s} .tl-cell:nth-child(4){transition-delay:.95s}
+.tl-cell.opt{border-style:dashed}
+.tl-cell.dep{padding-inline:10px;border-color:color-mix(in srgb,var(--ok) 55%,transparent);color:var(--ok)}
+:is(body:not(.present) .tl-stage.fill, body.present .tl-stage.shown) .tl-cell{background:color-mix(in srgb,var(--a) 24%,var(--card));border-color:var(--a);color:var(--ink)}
+:is(body:not(.present) .tl-stage.fill, body.present .tl-stage.shown) .tl-cell.opt{background:repeating-linear-gradient(135deg,color-mix(in srgb,var(--a) 24%,var(--card)) 0 6px,var(--card) 6px 12px)}
+:is(body:not(.present) .tl-stage.fill, body.present .tl-stage.shown) .tl-cell.dep{background:var(--ok);border-color:var(--ok);color:var(--card);font-weight:600}
+
+/* ---------- stage chapters ---------- */
+.chap{display:flex;align-items:flex-end;gap:18px;padding-top:18px;border-top:3px solid var(--a);margin-bottom:24px}
+.chap-n{font:800 clamp(2.6rem,6vw,3.8rem)/.85 var(--font-d);letter-spacing:-.05em;color:var(--a)}
+.chap-n small{display:block;font:600 10.5px/1 var(--font-m);letter-spacing:.14em;color:var(--soft);margin-bottom:7px}
+
+/* ---------- flow diagrams ---------- */
+.flow-card{background:var(--card);border:1px solid var(--line);border-radius:18px;overflow:hidden}
+.flow-scroll{overflow-x:auto;padding:14px}
+.flow-svg{display:block;width:100%;min-width:940px;height:auto}
+.band{fill:color-mix(in srgb,var(--a) 7%,var(--card))}
+.lane-label{fill:var(--a);font:600 10.5px var(--font-m);letter-spacing:.09em}
+.node{cursor:pointer;outline:none}
+.node rect{fill:var(--card);stroke:color-mix(in srgb,var(--a) 60%,var(--card));stroke-width:1.5;transition:fill .25s,stroke .25s}
+.node text{fill:var(--ink);font:600 13px var(--font-b);transition:fill .25s}
+.node:hover rect{stroke:var(--a);stroke-width:2}
+.node:focus-visible rect{stroke:var(--ink);stroke-width:2.5}
+.node.seen rect{fill:color-mix(in srgb,var(--a) 14%,var(--card))}
+.node.on rect{fill:var(--a);stroke:var(--a)}
+.node.on text{fill:var(--card)}
+.edge{fill:none;stroke:var(--soft);stroke-width:1.5;transition:stroke .2s,stroke-width .2s}
+.edge.loop{stroke:var(--warn);stroke-dasharray:5 4}
+.edge.on{stroke:var(--ink);stroke-width:2.4}
+.edge.loop.on{stroke:var(--warn)}
+.ah{fill:var(--soft)} .ah-w{fill:var(--warn)}
+.elabel{font:500 10px var(--font-m);fill:var(--warn)}
+.tok-halo{fill:color-mix(in srgb,var(--ink) 16%,transparent)}
+.tok-core{fill:var(--ink);stroke:var(--card);stroke-width:2}
+.stepper{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,7fr);gap:24px;padding:20px 24px;border-top:1px solid var(--line);min-height:10.5rem}
+.st-num{display:block;font:600 13px var(--font-m);color:var(--soft);font-variant-numeric:tabular-nums;margin-bottom:8px}
+.st-title{font:700 1.45rem/1.12 var(--font-d);letter-spacing:-.02em}
+.bul{display:flex;flex-direction:column;gap:8px}
+.bul li{position:relative;padding-left:20px;color:var(--muted);font-size:.97rem;line-height:1.4}
+.bul li::before{content:"";position:absolute;left:3px;top:.52em;width:7px;height:7px;border-radius:2px;background:var(--a,var(--soft))}
+.st-note{margin-top:12px;display:inline-block;padding:7px 12px;border-radius:10px;font:500 13px var(--font-b);
+  color:var(--warn);background:color-mix(in srgb,var(--warn) 11%,var(--card));border:1px dashed color-mix(in srgb,var(--warn) 50%,transparent)}
+.ctrl{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:12px 24px 16px;border-top:1px solid var(--line)}
+.btn{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--line-2);background:var(--card);border-radius:10px;padding:7px 13px;font:500 13px var(--font-b);cursor:pointer}
+.btn:hover{background:var(--sunken)}
+.dots{display:flex;gap:6px;margin-left:auto;flex-wrap:wrap}
+.dots button{width:26px;height:26px;border-radius:8px;border:1px solid var(--line);background:var(--card);font:500 11px var(--font-m);color:var(--soft);cursor:pointer;padding:0}
+.dots button[aria-current="step"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+
+/* ---------- release demo ---------- */
+.rel{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:22px;align-items:stretch}
+.pr,.after{background:var(--card);border:1px solid var(--line);border-radius:18px;display:flex;flex-direction:column}
+.pr-head{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:14px 18px;border-bottom:1px solid var(--line);font:600 1rem var(--font-d)}
+.pr-head i{margin-left:auto;font:500 12px var(--font-m);font-style:normal;color:var(--soft)}
+.branch{font:500 12px var(--font-m);padding:2px 8px;border-radius:6px;background:var(--sunken);color:var(--muted)}
+.evs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px 16px;padding:16px 18px}
+.ev{display:flex;align-items:center;gap:9px;font-size:.92rem;color:var(--muted);transition:opacity .2s}
+.tick{width:20px;height:20px;border-radius:50%;flex:none;display:grid;place-items:center;border:1.5px solid var(--line-2);color:transparent;font-size:11px;transition:all .2s}
+.tick .ic{stroke-width:3}
+.ev.ok .tick{background:var(--ok);border-color:var(--ok);color:var(--card)}
+.ev.stale{opacity:.5} .ev.stale .tick{border-style:dashed;border-color:var(--warn)}
+.pr-status{margin:0 18px;padding:9px 12px;border-radius:10px;font:500 13px var(--font-b);color:var(--c);background:color-mix(in srgb,var(--c) 10%,var(--card))}
+.pr-status.s-ok{--c:var(--ok)} .pr-status.s-warn{--c:var(--warn)}
+.pr-actions{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:16px 18px 18px;margin-top:auto}
+.whatif{font:500 13px var(--font-b);color:var(--soft)}
+.btn-merge{display:inline-flex;align-items:center;gap:8px;border:0;border-radius:10px;padding:10px 16px;font:600 .95rem var(--font-b);cursor:pointer;background:var(--human);color:var(--bg)}
+.btn-merge[disabled]{opacity:.5;cursor:not-allowed}
+.btn-merge.done{opacity:1;background:var(--ok)}
+.after{padding:14px 18px 16px;gap:10px}
+.after h4{font:600 1rem var(--font-d)}
+.ch{display:flex;align-items:center;gap:12px;padding:8px 0;position:relative;color:var(--soft);font-size:.95rem;transition:color .2s}
+.ch:not(:last-child)::after{content:"";position:absolute;left:10px;top:31px;bottom:-9px;border-left:1.5px solid var(--line-2)}
+.ch .tick{background:var(--card);position:relative;z-index:1}
+.ch.run{color:var(--ink)} .ch.run .tick{border-color:var(--human);border-top-color:transparent;animation:spin .7s linear infinite}
+.ch.ok{color:var(--ink)} .ch.ok .tick{background:var(--ok);border-color:var(--ok);color:var(--card)}
+.ch.bad{color:var(--bad)} .ch.bad .tick{background:var(--bad);border-color:var(--bad)}
+.ch.bad .tick .ic{display:none} .ch.bad .tick::after{content:'×';color:var(--card);font:700 14px/1 var(--font-b)}
+@keyframes spin{to{transform:rotate(360deg)}}
+.released{display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:10px;font:600 .95rem var(--font-b);color:var(--ok);background:color-mix(in srgb,var(--ok) 12%,var(--card))}
+.owner{margin-top:auto;padding-top:12px;border-top:1px solid var(--line);font-size:.9rem;color:var(--muted)}
+
+.zones{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.25fr) minmax(0,1fr);gap:16px;align-items:stretch}
+.zone{display:flex;flex-direction:column;gap:12px;padding:18px;border-radius:var(--r);background:color-mix(in srgb,var(--a) 7%,var(--card));border:1px solid color-mix(in srgb,var(--a) 30%,transparent)}
+.zone h4,.wall h4{display:flex;align-items:center;gap:8px;font:600 1.05rem var(--font-d);color:var(--a)}
+.wall{display:flex;flex-direction:column;gap:12px;padding:18px;border-radius:var(--r);background:var(--ink);color:var(--bg)}
+.wall h4{color:var(--bg)}
+.wall ul{display:flex;flex-direction:column;gap:9px}
+.wall li{display:flex;gap:10px;align-items:flex-start;font-size:.95rem;line-height:1.35}
+.wall li .ic{margin-top:.12em;color:color-mix(in srgb,var(--human) 50%,var(--bg))}
+
+/* ---------- setup ---------- */
+.steps6{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:14px}
+.setup{margin-top:34px}
+.setup h3{margin-bottom:14px}
+.steps6 li{position:relative;display:flex;align-items:center;gap:10px;padding:13px 14px;border-radius:var(--r);background:var(--card);border:1px solid var(--line);min-width:0}
+.steps6 li:not(:last-child)::after{content:'→';position:absolute;right:-13px;top:50%;transform:translateY(-50%);color:var(--soft);font-size:13px;z-index:1}
+.steps6 .ic{font-size:20px;color:var(--a)}
+.steps6 b{font:600 .98rem/1.2 var(--font-d)}
+.dev{margin-top:16px;border:1px dashed var(--line-2);border-radius:var(--r);padding:0 16px}
+.dev summary{display:flex;align-items:center;gap:10px;padding:13px 0;cursor:pointer;font:500 .93rem var(--font-b);color:var(--muted);list-style:none}
+.dev summary::-webkit-details-marker{display:none}
+.dev summary::before{content:"";width:6px;height:6px;border-right:1.6px solid var(--soft);border-bottom:1.6px solid var(--soft);transform:rotate(-45deg);transition:transform .15s}
+.dev[open] summary::before{transform:rotate(45deg)}
+.dev ul{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 22px;padding:2px 0 16px}
+.dev li{display:flex;gap:10px;align-items:flex-start;font-size:.9rem;line-height:1.35;color:var(--muted)}
+.box{width:15px;height:15px;border-radius:5px;border:1.5px solid var(--line-2);flex:none;margin-top:.17em}
+
+/* ---------- stage 2 ---------- */
+.ups{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.up{display:flex;flex-direction:column;gap:10px;padding:20px;border-radius:var(--r);background:var(--card);border:1px solid var(--line);min-width:0}
+.up .ic{font-size:26px;color:var(--a)}
+.up h4{font:600 1.15rem var(--font-d)}
+.up s{color:var(--soft);font-size:.97rem}
+.up p{font-size:1.02rem;line-height:1.4}
+.motto{margin-top:16px;display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:24px;align-items:center;padding:22px 24px;border-radius:18px;background:var(--ink);color:var(--bg)}
+.motto b{font:700 clamp(1.4rem,2.6vw,1.9rem)/1.1 var(--font-d);letter-spacing:-.03em}
+.motto b i{font-style:normal;display:block}
+.motto b .s{color:color-mix(in srgb,var(--script) 45%,var(--bg))} .motto b .g{color:color-mix(in srgb,var(--builder) 45%,var(--bg))}
+.motto p{font-size:1rem;line-height:1.4;color:color-mix(in srgb,var(--bg) 86%,var(--ink))}
+
+/* ---------- structure ---------- */
+.repo{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,6fr);gap:22px;align-items:start}
+.kit{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.kit button{display:flex;flex-direction:column;gap:6px;align-items:flex-start;text-align:left;padding:14px;border-radius:var(--r);border:1px solid var(--line);background:var(--card);cursor:pointer;min-width:0;transition:border-color .15s,box-shadow .15s}
+.kit button:hover,.kit button[aria-pressed="true"]{border-color:var(--ink);box-shadow:0 0 0 3px color-mix(in srgb,var(--ink) 9%,transparent)}
+.kit .ic{font-size:20px;color:var(--script);margin-bottom:2px}
+.kit b{font:600 1rem/1.2 var(--font-d);letter-spacing:-.01em}
+.kit span{font-size:.88rem;color:var(--muted);line-height:1.35}
+.tree{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:16px 18px;font:500 12.5px/1.5 var(--font-m);min-width:0}
+.tree ul ul{margin-left:9px;padding-left:14px;border-left:1px solid var(--line)}
+.row{display:flex;flex-wrap:wrap;align-items:baseline;column-gap:10px;padding:2.5px 6px;border-radius:7px;transition:opacity .15s,background .15s}
+.row .f{color:var(--ink);font-weight:600;overflow-wrap:anywhere}
+.row .c{color:var(--soft);font-weight:400;font-family:var(--font-b);font-size:12.5px}
+summary.row{cursor:pointer;list-style:none}
+summary.row::-webkit-details-marker{display:none}
+summary.row .f::before{content:"";display:inline-block;width:6px;height:6px;border-right:1.6px solid var(--soft);border-bottom:1.6px solid var(--soft);transform:rotate(-45deg);margin-right:8px;vertical-align:.12em;transition:transform .15s}
+details[open] > summary.row .f::before{transform:rotate(45deg)}
+.tree.filtering .row{opacity:.32}
+.tree.filtering .hit .row{opacity:1}
+.tree.filtering .hit > .row,.tree.filtering .hit > details > summary.row{background:color-mix(in srgb,var(--ok) 13%,var(--card))}
+.foot-note{margin-top:34px;padding-top:18px;border-top:1px solid var(--line);display:flex;flex-wrap:wrap;gap:8px 16px;font-size:.88rem;color:var(--soft)}
+.foot-note a{color:var(--builder)}
+
+/* ---------- deck controls ---------- */
+.deck{position:fixed;left:0;right:0;bottom:0;z-index:20;display:flex;justify-content:center;padding:0 16px calc(env(safe-area-inset-bottom,0px) + 14px);pointer-events:none}
+.dk-group{pointer-events:auto;display:flex;align-items:center;gap:4px;padding:5px;border-radius:999px;background:color-mix(in srgb,var(--card) 92%,transparent);backdrop-filter:blur(10px);border:1px solid var(--line-2)}
+.dk-btn{border:0;background:none;border-radius:999px;padding:8px 14px;font:500 13px var(--font-b);cursor:pointer;display:inline-flex;align-items:center;gap:8px}
+.dk-btn:hover{background:var(--sunken)}
+.dk-btn[disabled]{opacity:.35;cursor:default}
+.dk-next,.dk-next:hover{background:var(--ink);color:var(--bg)}
+kbd{font:500 11px var(--font-m);padding:1px 7px;border-radius:6px;border:1px solid color-mix(in srgb,currentColor 40%,transparent)}
+.dk-pos{font:500 12px var(--font-m);color:var(--soft);padding:0 10px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.dk-line{position:fixed;left:0;bottom:0;height:3px;width:0;background:var(--ok);transition:width .25s;z-index:21}
+.dk-mode{position:fixed;z-index:21;right:16px;top:calc(env(safe-area-inset-top,0px) + 12px);border:1px solid var(--line-2);background:color-mix(in srgb,var(--card) 92%,transparent);backdrop-filter:blur(10px);
+  border-radius:999px;padding:7px 14px;font:500 13px var(--font-b);cursor:pointer}
+.dk-mode:hover{background:var(--sunken)}
+body:not(.present) .dk-group,body:not(.present) .dk-line{display:none}
+body:not(.present) .dk-mode{top:auto;bottom:calc(env(safe-area-inset-bottom,0px) + 14px)}
+
+/* ---------- step-by-step mode ---------- */
+body.present .nav{display:none}
+body.present .wrap{min-height:100%;display:flex;flex-direction:column;justify-content:center;padding-block:60px 96px}
+body.present .sec{padding-top:0}
+body.present .slide{display:none}
+body.present .slide.cur{display:block;animation:slidein .28s ease-out}
+body.present .sec > .slide + .slide{margin-top:0}
+body.present .stg{display:inline}
+body.present .ctrl,body.present .foot-note{display:none}
+body.present .flow-svg{max-height:max(230px,calc(100vh - 470px))}
+body.present [data-rev]{opacity:0;transform:translateY(10px);pointer-events:none;transition:opacity .3s,transform .3s}
+body.present [data-rev].shown{opacity:1;transform:none;pointer-events:auto}
+@keyframes slidein{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+
+@media (max-width:1000px){
+  .tl{grid-template-columns:minmax(0,1fr);gap:34px}
+  .tl > li:not(:last-child)::after{content:'↓';right:auto;left:50%;top:auto;bottom:-29px;transform:translateX(-50%)}
+  .tl-start{flex-direction:row;gap:12px}
+  .steps6{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .steps6 li:nth-child(3)::after{display:none}
+}
+@media (max-width:900px){
+  .hero,.repo,.rel,.motto,.ups,.zones{grid-template-columns:minmax(0,1fr)}
+  .moves{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .move:nth-child(2)::after{display:none}
+  .stepper{grid-template-columns:minmax(0,1fr);gap:14px;min-height:16rem}
+  .sec{padding-top:64px}
+}
+@media (max-width:560px){
+  .wrap{padding-inline:16px}
+  .kit,.evs,.dev ul,.moves,.steps6{grid-template-columns:minmax(0,1fr)}
+  .move::after,.steps6 li::after{display:none}
+  .nav button{padding:7px 10px;font-size:12.5px}
+  .dots{margin-left:0}
+  body.present .wrap{justify-content:flex-start}
+  .dk-next kbd{display:none}
+}
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{animation:none!important;transition:none!important}
+}
+</style>
+</head>
+<body>
+<script>try{if(localStorage.getItem('fr-mode')!=='full')document.body.classList.add('present')}catch(e){document.body.classList.add('present')}</script>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <defs>
+    <symbol id="i-person" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.6"/><path d="M5 20c0-3.9 3.1-6.4 7-6.4s7 2.5 7 6.4"/></symbol>
+    <symbol id="i-agent" viewBox="0 0 24 24"><rect x="4" y="8" width="16" height="11" rx="3"/><path d="M12 8V4.5M9.5 13v1.4M14.5 13v1.4"/><circle cx="12" cy="3.6" r="1"/></symbol>
+    <symbol id="i-review" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.2"/><path d="M15.2 15.2 20 20M8 10.6l1.8 1.8 3-3.4"/></symbol>
+    <symbol id="i-script" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="m7 10 3 2.4-3 2.4M12.5 15H17"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></symbol>
+    <symbol id="i-merge" viewBox="0 0 24 24"><circle cx="7" cy="6" r="2"/><circle cx="7" cy="18" r="2"/><circle cx="17" cy="12" r="2"/><path d="M7 8v8M7 8c0 4 4 4 8 4"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></symbol>
+    <symbol id="i-map" viewBox="0 0 24 24"><path d="m4 6 5-2 6 2 5-2v14l-5 2-6-2-5 2zM9 4v14M15 6v14"/></symbol>
+    <symbol id="i-book" viewBox="0 0 24 24"><path d="M5 4.5h10a3 3 0 0 1 3 3V20H8a3 3 0 0 1-3-3zM5 17a3 3 0 0 1 3-3h10"/></symbol>
+    <symbol id="i-list" viewBox="0 0 24 24"><path d="M9 7h10M9 12h10M9 17h10M5 7h.01M5 12h.01M5 17h.01"/></symbol>
+    <symbol id="i-loop" viewBox="0 0 24 24"><path d="M19 12a7 7 0 1 1-2.2-5.1M19 4.5v3.2h-3.2"/></symbol>
+    <symbol id="i-ship" viewBox="0 0 24 24"><path d="M12 16V5M7.5 9.5 12 5l4.5 4.5M5 19.5h14"/></symbol>
+    <symbol id="i-chat" viewBox="0 0 24 24"><path d="M5 5h14a1.5 1.5 0 0 1 1.5 1.5v8A1.5 1.5 0 0 1 19 16h-7l-4.5 3.5V16H5a1.5 1.5 0 0 1-1.5-1.5v-8A1.5 1.5 0 0 1 5 5z"/></symbol>
+  </defs>
+</svg>
+
+<main class="wrap">
+
+  <header class="slide cur">
+    <div class="hero">
+      <div>
+        <span class="eyebrow">FlyRank · proposal · setup pending</span>
+        <h1>One workflow for every change.</h1>
+      </div>
+      <div class="composer" aria-label="Example task given to the agent">
+        <div class="comp-top"><svg class="ic"><use href="#i-chat"/></svg><span>Slack</span><span>→</span><span>Codex in Cursor or VS Code</span></div>
+        <div class="comp-body">
+          <span class="ghost" aria-hidden="true">Fix optimizations stuck “running” after a flow fails.</span>
+          <span><span id="typeOut">Fix optimizations stuck “running” after a flow fails.</span><i class="caret" aria-hidden="true"></i></span>
+        </div>
+      </div>
+    </div>
+    <ol class="moves">
+      <li class="move a-human" data-rev><span class="move-ic"><svg class="ic"><use href="#i-person"/></svg></span><b>Give the agent a task</b></li>
+      <li class="move a-builder" data-rev><span class="move-ic"><svg class="ic"><use href="#i-agent"/></svg></span><b>It builds and validates</b></li>
+      <li class="move a-reviewer" data-rev><span class="move-ic"><svg class="ic"><use href="#i-review"/></svg></span><b>A fresh agent reviews + fixes</b></li>
+      <li class="move a-human" data-rev><span class="move-ic"><svg class="ic"><use href="#i-merge"/></svg></span><b>A human approves</b></li>
+    </ol>
+  </header>
+
+  <nav class="nav" aria-label="Sections">
+    <button type="button" data-to="stage1">Stage 1</button>
+    <button type="button" data-to="stage2">Stage 2</button>
+    <button type="button" data-to="stage3">Stage 3</button>
+    <button type="button" data-to="repo">Structure</button>
+    <button type="button" data-to="rollout">Rollout</button>
+  </nav>
+
+  <!-- ================= STAGE 1 ================= -->
+  <section class="sec a-builder" id="stage1">
+    <div class="slide" data-kind="flow1">
+      <div class="chap"><span class="chap-n"><small>STAGE</small>1</span><h2>MVP: how one task travels</h2></div>
+      <p class="slide-note">Shared workflow + complete knowledgebase · to implement in Stage 1</p>
+      <div class="flow-card" id="flow1">
+        <div class="flow-scroll">
+          <svg class="flow-svg" viewBox="0 0 1132 360" role="img" aria-label="The developer gives a task. The builder agent reads, builds, tests and opens a PR. Automatic checks run. A fresh repository reviewer reviews and fixes findings directly. The builder checks reviewer edits; checks and review rerun. The change is validated on staging. The agent prepares the release and stops. A human merges. The release is verified and recorded.">
+            <defs>
+              <marker id="arr" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path class="ah" d="M0,.5 7.5,4 0,7.5z"/></marker>
+              <marker id="arrw" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path class="ah-w" d="M0,.5 7.5,4 0,7.5z"/></marker>
+            </defs>
+            <rect class="band a-human" x="0" y="6" width="1132" height="80" rx="12"/>
+            <rect class="band a-builder" x="0" y="92" width="1132" height="106" rx="12"/>
+            <rect class="band a-script" x="0" y="204" width="1132" height="64" rx="12"/>
+            <rect class="band a-reviewer" x="0" y="274" width="1132" height="80" rx="12"/>
+            <text class="lane-label a-human" x="14" y="50">PEOPLE</text>
+            <text class="lane-label a-builder" x="14" y="151">BUILDER</text><text class="lane-label a-builder" x="14" y="165">AGENT</text>
+            <text class="lane-label a-script" x="14" y="232">AUTOMATIC</text><text class="lane-label a-script" x="14" y="246">CHECKS</text>
+            <text class="lane-label a-reviewer" x="14" y="309">REVIEWER</text><text class="lane-label a-reviewer" x="14" y="323">AGENT</text>
+
+            <path data-e="e0" class="edge" d="M222,46 H280 V131" marker-end="url(#arr)"/>
+            <path data-e="e1" class="edge" d="M322,156 H335" marker-end="url(#arr)"/>
+            <path data-e="e2" class="edge" d="M422,156 H435" marker-end="url(#arr)"/>
+            <path data-e="e3" class="edge" d="M522,156 H535" marker-end="url(#arr)"/>
+            <path class="edge" d="M580,178 V211" marker-end="url(#arr)"/>
+            <path data-e="e4" class="edge" d="M622,156 H680 V289" marker-end="url(#arr)"/>
+            <path data-e="e5" class="edge" d="M722,314 H780 V181" marker-end="url(#arr)"/>
+            <path data-e="e6" class="edge" d="M822,156 H835" marker-end="url(#arr)"/>
+            <path data-e="e7" class="edge" d="M922,156 H980 V71" marker-end="url(#arr)"/>
+            <path data-e="e8" class="edge" d="M1022,46 H1080 V131" marker-end="url(#arr)"/>
+            <path data-e="l1" class="edge loop" d="M638,314 H480 V181" marker-end="url(#arrw)"/>
+            <path class="edge loop" d="M798,178 V280 H696 V289" marker-end="url(#arrw)"/>
+            <text class="elabel" x="558" y="306" text-anchor="middle">fix → recheck</text>
+            <text class="elabel" x="874" y="278" text-anchor="middle">problems → reviewer</text>
+
+            <g class="node a-human" data-step="0" tabindex="0" role="button" aria-label="Step 1: Task"><rect x="138" y="24" width="84" height="44" rx="9"/><text x="180" y="50.500" text-anchor="middle">Task</text></g>
+            <g class="node a-builder" data-step="1" tabindex="0" role="button" aria-label="Step 2: Read"><rect x="238" y="134" width="84" height="44" rx="9"/><text x="280" y="160.500" text-anchor="middle">Read</text></g>
+            <g class="node a-builder" data-step="2" tabindex="0" role="button" aria-label="Step 3: Build"><rect x="338" y="134" width="84" height="44" rx="9"/><text x="380" y="160.500" text-anchor="middle">Build</text></g>
+            <g class="node a-builder" data-step="3" tabindex="0" role="button" aria-label="Step 4: Test"><rect x="438" y="134" width="84" height="44" rx="9"/><text x="480" y="160.500" text-anchor="middle">Test</text></g>
+            <g class="node a-builder" data-step="4" tabindex="0" role="button" aria-label="Step 5: Open PR"><rect x="538" y="134" width="84" height="44" rx="9"/><text x="580" y="160.500" text-anchor="middle">Open PR</text></g>
+            <g class="node a-script" data-step="4" aria-hidden="true"><rect x="538" y="214" width="84" height="44" rx="9"/><text x="580" y="240.500" text-anchor="middle">Checks</text></g>
+            <g class="node a-reviewer" data-step="5" tabindex="0" role="button" aria-label="Step 6: Review and fix"><rect x="638" y="292" width="84" height="44" rx="9"/><text x="680" y="318.500" text-anchor="middle">Review + fix</text></g>
+            <g class="node a-builder" data-step="6" tabindex="0" role="button" aria-label="Step 7: Staging"><rect x="738" y="134" width="84" height="44" rx="9"/><text x="780" y="160.500" text-anchor="middle">Staging</text></g>
+            <g class="node a-builder" data-step="7" tabindex="0" role="button" aria-label="Step 8: Release PR"><rect x="838" y="134" width="84" height="44" rx="9"/><text x="880" y="160.500" text-anchor="middle">Release PR</text></g>
+            <g class="node a-human" data-step="8" tabindex="0" role="button" aria-label="Step 9: Merge"><rect x="938" y="24" width="84" height="44" rx="9"/><text x="980" y="50.500" text-anchor="middle">Merge</text></g>
+            <g class="node a-builder" data-step="9" tabindex="0" role="button" aria-label="Step 10: Verify"><rect x="1038" y="134" width="84" height="44" rx="9"/><text x="1080" y="160.500" text-anchor="middle">Verify</text></g>
+
+            <g class="tok" opacity="0"><circle class="tok-halo" r="11"/><circle class="tok-core" r="5.5"/></g>
+          </svg>
+        </div>
+        <div class="stepper">
+          <div><span class="st-num js-num">01 / 10</span><h3 class="st-title js-title">Give the task</h3></div>
+          <div>
+            <ul class="bul a-human js-list">
+              <li>What to do and the expected outcome</li>
+              <li>An example or a way to reproduce it, if there is one</li>
+            </ul>
+            <div class="st-note js-note" hidden></div>
+          </div>
+        </div>
+        <div class="ctrl">
+          <button type="button" class="btn js-prev" aria-label="Previous step">←</button>
+          <button type="button" class="btn js-play">Play</button>
+          <button type="button" class="btn js-next" aria-label="Next step">→</button>
+          <div class="dots js-dots" role="group" aria-label="Jump to step"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="slide" data-kind="demo">
+      <h3 class="head"><span class="stg">STAGE 1</span>Production needs a human click</h3>
+      <p class="slide-note">GitHub release PR · animated demo only · no live actions</p>
+      <div class="rel">
+        <div class="pr">
+          <div class="pr-head"><svg class="ic"><use href="#i-merge"/></svg>Release PR <span class="branch">staging</span>→<span class="branch">main</span><i>demo</i></div>
+          <ul class="evs" id="evs" aria-label="What the agent hands over">
+            <li class="ev ok"><span class="tick"><svg class="ic"><use href="#i-check"/></svg></span>What changes</li>
+            <li class="ev ok"><span class="tick"><svg class="ic"><use href="#i-check"/></svg></span>Staging link</li>
+            <li class="ev ok"><span class="tick"><svg class="ic"><use href="#i-check"/></svg></span>Test + check results</li>
+            <li class="ev ok"><span class="tick"><svg class="ic"><use href="#i-check"/></svg></span>Evidence from both agents</li>
+            <li class="ev ok"><span class="tick"><svg class="ic"><use href="#i-check"/></svg></span>Database + deploy steps</li>
+            <li class="ev ok"><span class="tick"><svg class="ic"><use href="#i-check"/></svg></span>Recovery plan</li>
+            <li class="ev ok"><span class="tick"><svg class="ic"><use href="#i-check"/></svg></span>Exact commits checked</li>
+            <li class="ev ok"><span class="tick"><svg class="ic"><use href="#i-check"/></svg></span>Whole release checked</li>
+          </ul>
+          <p class="pr-status s-ok" id="prStatus" role="status">The agent has stopped. Waiting for the human.</p>
+          <div class="pr-actions">
+            <button type="button" class="btn-merge" id="mergeBtn"><svg class="ic"><use href="#i-merge"/></svg><span id="mergeTxt">Merge pull request</span></button>
+            <span class="whatif" id="whatIf">What if</span>
+            <button type="button" class="btn" id="lateBtn">new code arrives</button>
+            <button type="button" class="btn" id="failBtn">a check fails</button>
+            <button type="button" class="btn" id="recheckBtn" hidden>Checks and review pass again</button>
+            <button type="button" class="btn" id="failvBtn" hidden>What if verification fails?</button>
+            <button type="button" class="btn" id="resetBtn" hidden>Start over</button>
+          </div>
+        </div>
+        <div class="after">
+          <h4>Merged is not released yet</h4>
+          <ul id="chain">
+            <li class="ch"><span class="tick"><svg class="ic"><use href="#i-check"/></svg></span>Production deploy starts</li>
+            <li class="ch"><span class="tick"><svg class="ic"><use href="#i-check"/></svg></span>App deployment checked</li>
+            <li class="ch"><span class="tick"><svg class="ic"><use href="#i-check"/></svg></span>Database deployment checked</li>
+            <li class="ch"><span class="tick"><svg class="ic"><use href="#i-check"/></svg></span>Affected user journey verified</li>
+            <li class="ch"><span class="tick"><svg class="ic"><use href="#i-check"/></svg></span>Release notes + lessons recorded</li>
+          </ul>
+          <div class="released" id="released" hidden><svg class="ic"><use href="#i-check"/></svg>Demo: released and verified</div>
+          <p class="owner">One named release owner, plus a named backup.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="slide">
+      <h3 class="head"><span class="stg">STAGE 1</span>Who can do what</h3>
+      <div class="zones">
+        <div class="zone a-builder" data-rev>
+          <h4><svg class="ic"><use href="#i-agent"/></svg>The agent</h4>
+          <ul class="bul">
+            <li>Works on task branches and opens PRs</li>
+            <li>Validates on staging</li>
+            <li>Tests in the test account; reads deployment results</li>
+            <li>Prepares the release, then stops</li>
+          </ul>
+        </div>
+        <div class="wall" data-rev>
+          <h4><svg class="ic"><use href="#i-lock"/></svg>Production rules to configure</h4>
+          <ul>
+            <li><svg class="ic"><use href="#i-check"/></svg>Every change needs a PR and passing checks</li>
+            <li><svg class="ic"><use href="#i-check"/></svg>Only named people can merge</li>
+            <li><svg class="ic"><use href="#i-check"/></svg>No auto-merge, no agent shortcut</li>
+            <li><svg class="ic"><use href="#i-check"/></svg>Require renewed approval after new code</li>
+            <li><svg class="ic"><use href="#i-check"/></svg>The agent has its own login, so GitHub can tell it from a person</li>
+          </ul>
+        </div>
+        <div class="zone a-human" data-rev>
+          <h4><svg class="ic"><use href="#i-person"/></svg>Release owners</h4>
+          <ul class="bul">
+            <li>Merge staging to main</li>
+            <li>Run production deploys</li>
+            <li>Production credentials stay in the release system</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+  </section>
+
+  <!-- ================= STAGE 2 ================= -->
+  <section class="sec a-reviewer" id="stage2">
+    <div class="slide">
+      <div class="chap"><span class="chap-n"><small>STAGE</small>2</span><h2>Review automation, after the pilot</h2></div>
+      <div class="ups">
+        <div class="up a-reviewer" data-rev>
+          <svg class="ic"><use href="#i-review"/></svg>
+          <h4>Repository review + direct fixes</h4>
+          <s>A developer starts it by hand</s>
+          <p>PR update → review + direct fixes → recheck the final commits.</p>
+        </div>
+        <div class="up a-builder" data-rev>
+          <svg class="ic"><use href="#i-book"/></svg>
+          <h4>Docs that stay current</h4>
+          <s>Only updated with each change</s>
+          <p>Plus a weekly agent that compares code with docs and opens small repair PRs.</p>
+        </div>
+      </div>
+      <div class="motto" data-rev>
+        <b><i class="s">Scripts check.</i><i class="g">Agents maintain knowledge.</i></b>
+        <p>A repeated mistake becomes a test or a clearer rule.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= STAGE 3 ================= -->
+  <section class="sec a-script" id="stage3">
+    <div class="slide" data-kind="flow3">
+      <div class="chap"><span class="chap-n"><small>STAGE</small>3</span><h2>Slack to release: two human checkpoints</h2></div>
+      <p class="slide-note">Plan approval + production approval in Slack · integration to build</p>
+      <div class="flow-card" id="flow3">
+        <div class="flow-scroll">
+          <svg class="flow-svg" viewBox="0 0 1132 288" role="img" aria-label="A task arrives in Slack. A planning agent asks questions. A human approves the plan in Slack. The builder implements and the repository reviewer fixes findings directly; both validate the result. Staging deploys when checks and review pass. A human tests and approves that release in Slack, or requests changes. Automation merges and deploys, verifies the result and reports back to Slack.">
+            <defs>
+              <marker id="arr3" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path class="ah" d="M0,.5 7.5,4 0,7.5z"/></marker>
+              <marker id="arrw3" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path class="ah-w" d="M0,.5 7.5,4 0,7.5z"/></marker>
+            </defs>
+            <rect class="band a-human" x="0" y="6" width="1132" height="80" rx="12"/>
+            <rect class="band a-builder" x="0" y="92" width="1132" height="104" rx="12"/>
+            <rect class="band a-script" x="0" y="202" width="1132" height="80" rx="12"/>
+            <text class="lane-label a-human" x="14" y="50">PEOPLE</text>
+            <text class="lane-label a-builder" x="14" y="154">AGENTS</text>
+            <text class="lane-label a-script" x="14" y="246">AUTOMATIC</text>
+
+            <path data-e="e0" class="edge" d="M238,46 H314 V125" marker-end="url(#arr3)"/>
+            <path data-e="e1" class="edge" d="M362,150 H438 V71" marker-end="url(#arr3)"/>
+            <path data-e="e2" class="edge" d="M486,46 H562 V125" marker-end="url(#arr3)"/>
+            <path data-e="e3" class="edge" d="M610,150 H686 V217" marker-end="url(#arr3)"/>
+            <path data-e="e4" class="edge" d="M734,242 H810 V71" marker-end="url(#arr3)"/>
+            <path data-e="e5" class="edge" d="M858,46 H934 V217" marker-end="url(#arr3)"/>
+            <path data-e="e6" class="edge" d="M982,242 H1007" marker-end="url(#arr3)"/>
+            <path data-e="lf" class="edge loop" d="M790,68 V108 H590 V125" marker-end="url(#arrw3)"/>
+            <text class="elabel" x="690" y="102" text-anchor="middle">changes needed</text>
+
+            <g class="node a-human" data-step="0" tabindex="0" role="button" aria-label="Step 1: Slack task"><rect x="142" y="24" width="96" height="44" rx="9"/><text x="190" y="50.500" text-anchor="middle">Slack task</text></g>
+            <g class="node a-builder" data-step="1" tabindex="0" role="button" aria-label="Step 2: Questions"><rect x="266" y="128" width="96" height="44" rx="9"/><text x="314" y="154.500" text-anchor="middle">Questions</text></g>
+            <g class="node a-human" data-step="2" tabindex="0" role="button" aria-label="Step 3: Approve plan"><rect x="390" y="24" width="96" height="44" rx="9"/><text x="438" y="50.500" text-anchor="middle">Approve plan</text></g>
+            <g class="node a-builder" data-step="3" tabindex="0" role="button" aria-label="Step 4: Build and review"><rect x="514" y="128" width="96" height="44" rx="9"/><text x="562" y="154.500" text-anchor="middle">Build + review</text></g>
+            <g class="node a-script" data-step="4" tabindex="0" role="button" aria-label="Step 5: Staging"><rect x="638" y="220" width="96" height="44" rx="9"/><text x="686" y="246.500" text-anchor="middle">Staging</text></g>
+            <g class="node a-human" data-step="5" tabindex="0" role="button" aria-label="Step 6: Test staging and approve production in Slack"><rect x="762" y="24" width="96" height="44" rx="9"/><text x="810" y="50.500" text-anchor="middle">Slack approval</text></g>
+            <g class="node a-script" data-step="6" tabindex="0" role="button" aria-label="Step 7: Merge and deploy"><rect x="886" y="220" width="96" height="44" rx="9"/><text x="934" y="246.500" text-anchor="middle">Merge + deploy</text></g>
+            <g class="node a-script" data-step="7" tabindex="0" role="button" aria-label="Step 8: Verify and report"><rect x="1010" y="220" width="96" height="44" rx="9"/><text x="1058" y="246.500" text-anchor="middle">Verify + report</text></g>
+
+            <g class="tok" opacity="0"><circle class="tok-halo" r="11"/><circle class="tok-core" r="5.5"/></g>
+          </svg>
+        </div>
+        <div class="stepper">
+          <div><span class="st-num js-num">01 / 08</span><h3 class="st-title js-title">A task arrives in Slack</h3></div>
+          <div>
+            <ul class="bul a-human js-list">
+              <li>Tasks, conversations and feedback in one channel</li>
+              <li>One tracked task per request, with its thread</li>
+            </ul>
+            <div class="st-note js-note" hidden></div>
+          </div>
+        </div>
+        <div class="ctrl">
+          <button type="button" class="btn js-prev" aria-label="Previous step">←</button>
+          <button type="button" class="btn js-play">Play</button>
+          <button type="button" class="btn js-next" aria-label="Next step">→</button>
+          <div class="dots js-dots" role="group" aria-label="Jump to step"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= STRUCTURE ================= -->
+  <section class="sec slide" id="repo">
+    <h2 class="head">Proposed project structure</h2>
+    <p class="slide-note">Example filenames · complete application coverage in Stage 1</p>
+    <div class="repo">
+      <div class="kit" id="kit">
+        <button type="button" data-g="1" aria-pressed="false"><svg class="ic"><use href="#i-agent"/></svg><b>One instruction source</b><span>Same rules for every agent</span></button>
+        <button type="button" data-g="2" aria-pressed="false"><svg class="ic"><use href="#i-map"/></svg><b>The map</b><span>Where rules, code, tests and history live</span></button>
+        <button type="button" data-g="3" aria-pressed="false"><svg class="ic"><use href="#i-book"/></svg><b>Rules + knowledge</b><span>How the app works today</span></button>
+        <button type="button" data-g="4" aria-pressed="false"><svg class="ic"><use href="#i-loop"/></svg><b>Playbook + test setup</b><span>Agent roles, release steps, test accounts</span></button>
+        <button type="button" data-g="5" aria-pressed="false"><svg class="ic"><use href="#i-list"/></svg><b>History + changelog</b><span>Decisions, evidence, and what shipped</span></button>
+        <button type="button" data-g="6" aria-pressed="false"><svg class="ic"><use href="#i-check"/></svg><b>Checks + PR record</b><span>Checks and evidence matched to the change</span></button>
+      </div>
+
+      <div class="tree" id="tree">
+        <ul>
+          <li data-g="1"><div class="row"><span class="f">AGENTS.md</span><span class="c">Shared instructions for all agents</span></div></li>
+          <li data-g="1"><div class="row"><span class="f">CLAUDE.md</span><span class="c">Contains only @AGENTS.md</span></div></li>
+          <li data-g="5"><div class="row"><span class="f">CHANGELOG.md</span><span class="c">Unreleased + dated releases</span></div></li>
+          <li><details open><summary class="row"><span class="f">.github/</span></summary>
+            <ul>
+              <li data-g="6"><div class="row"><span class="f">PULL_REQUEST_TEMPLATE.md</span><span class="c">Task, impact, validation, docs</span></div></li>
+              <li><div class="row"><span class="f">dependabot.yml</span></div></li>
+              <li><details open><summary class="row"><span class="f">workflows/</span></summary>
+                <ul>
+                  <li data-g="6"><div class="row"><span class="f">ci.yaml</span><span class="c">Code and docs checks</span></div></li>
+                  <li><div class="row"><span class="f">deploy-migrations-to-staging.yaml</span></div></li>
+                  <li><div class="row"><span class="f">deploy-migrations-to-production.yaml</span></div></li>
+                  <li><div class="row"><span class="f">agent-review.yaml</span><span class="c">PR review + direct fixes, Stage 2</span></div></li>
+                  <li><div class="row"><span class="f">docs-maintenance.yaml</span><span class="c">Weekly docs upkeep, Stage 2</span></div></li>
+                </ul>
+              </details></li>
+            </ul>
+          </details></li>
+          <li><details open><summary class="row"><span class="f">docs/dev/</span></summary>
+            <ul>
+              <li data-g="2"><div class="row"><span class="f">README.md</span><span class="c">Index and application map</span></div></li>
+              <li data-g="4"><div class="row"><span class="f">workflow.md</span><span class="c">Playbook, agent roles, releases</span></div></li>
+              <li data-g="4"><div class="row"><span class="f">testing.md</span><span class="c">Test setup, browser checks</span></div></li>
+              <li data-g="3"><details><summary class="row"><span class="f">standards/</span><span class="c">Engineering rules</span></summary>
+                <ul>
+                  <li><div class="row"><span class="f">api-development.md</span></div></li>
+                  <li><div class="row"><span class="f">repository-pattern.md</span></div></li>
+                  <li><div class="row"><span class="f">service-layer.md</span></div></li>
+                  <li><div class="row"><span class="f">react-components.md</span></div></li>
+                  <li><div class="row"><span class="f">custom-hooks.md</span></div></li>
+                  <li><div class="row"><span class="f">background-jobs.md</span></div></li>
+                  <li><div class="row"><span class="f">integrations.md</span></div></li>
+                  <li><div class="row"><span class="f">authentication-and-permissions.md</span></div></li>
+                  <li><div class="row"><span class="f">database-migrations.md</span></div></li>
+                  <li><div class="row"><span class="f">environment-configuration.md</span></div></li>
+                  <li><div class="row"><span class="f">error-handling-and-logging.md</span></div></li>
+                  <li><div class="row"><span class="f">caching.md</span></div></li>
+                </ul>
+              </details></li>
+              <li data-g="3"><details><summary class="row"><span class="f">knowledge/</span><span class="c">Business logic, connected features</span></summary>
+                <ul>
+                  <li><div class="row"><span class="f">streams-and-flows.md</span></div></li>
+                  <li><div class="row"><span class="f">content-optimization.md</span></div></li>
+                  <li><div class="row"><span class="f">content-atlas.md</span></div></li>
+                  <li><div class="row"><span class="f">ai-visibility.md</span></div></li>
+                  <li><div class="row"><span class="f">…</span><span class="c">All remaining app areas, Stage 1</span></div></li>
+                </ul>
+              </details></li>
+              <li data-g="5"><details><summary class="row"><span class="f">todos/</span><span class="c">Example tasks: active/ + completed/</span></summary>
+                <ul>
+                  <li><details open><summary class="row"><span class="f">active/content-atlas-improvements/</span></summary><ul>
+                    <li><div class="row"><span class="f">plan.md</span></div></li>
+                    <li><div class="row"><span class="f">validation.md</span></div></li>
+                  </ul></details></li>
+                  <li><details open><summary class="row"><span class="f">completed/streams-error-handling/</span></summary><ul>
+                    <li><div class="row"><span class="f">plan.md</span></div></li>
+                    <li><div class="row"><span class="f">implementation-notes.md</span></div></li>
+                    <li><div class="row"><span class="f">validation.md</span></div></li>
+                  </ul></details></li>
+                </ul>
+              </details></li>
+            </ul>
+          </details></li>
+          <li><details open><summary class="row"><span class="f">scripts/</span></summary>
+            <ul>
+              <li data-g="6"><div class="row"><span class="f">verify.mjs</span><span class="c">Runs the agreed checks</span></div></li>
+              <li data-g="6"><div class="row"><span class="f">check-knowledge.mjs</span><span class="c">Doc links and structure</span></div></li>
+            </ul>
+          </details></li>
+          <li><div class="row"><span class="f">app/ · components/ · docs/user/ · …</span><span class="c">Existing, unchanged</span></div></li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= ROLLOUT (closing) ================= -->
+  <section class="sec slide" id="rollout">
+    <h2 class="head">Once approved: 2–3 full days per stage, then deploy.</h2>
+    <ol class="tl">
+      <li class="tl-start"><svg class="ic"><use href="#i-check"/></svg><b>Approved</b></li>
+      <li class="tl-stage fill a-builder" data-rev>
+        <button type="button" data-to="stage1"><small>STAGE 1</small><b>MVP</b><span class="tl-bar"><span class="tl-cell">Day 1</span><span class="tl-cell">Day 2</span><span class="tl-cell opt">Day 3</span><span class="tl-cell dep"><svg class="ic"><use href="#i-ship"/></svg>Deploy</span></span></button>
+      </li>
+      <li class="tl-stage fill a-reviewer" data-rev>
+        <button type="button" data-to="stage2"><small>STAGE 2</small><b>Review automation</b><span class="tl-bar"><span class="tl-cell">Day 1</span><span class="tl-cell">Day 2</span><span class="tl-cell opt">Day 3</span><span class="tl-cell dep"><svg class="ic"><use href="#i-ship"/></svg>Deploy</span></span></button>
+      </li>
+      <li class="tl-stage fill a-script" data-rev>
+        <button type="button" data-to="stage3"><small>STAGE 3</small><b>Slack to release</b><span class="tl-bar"><span class="tl-cell">Day 1</span><span class="tl-cell">Day 2</span><span class="tl-cell opt">Day 3</span><span class="tl-cell dep"><svg class="ic"><use href="#i-ship"/></svg>Deploy</span></span></button>
+      </li>
+    </ol>
+    <div class="setup" data-rev>
+      <h3>Stage 1: complete knowledgebase + shared workflow</h3>
+      <ol class="steps6">
+        <li class="a-builder"><svg class="ic"><use href="#i-review"/></svg><b>Audit</b></li>
+        <li class="a-builder"><svg class="ic"><use href="#i-book"/></svg><b>Rewrite + expand</b></li>
+        <li class="a-builder"><svg class="ic"><use href="#i-map"/></svg><b>Validate + organize</b></li>
+        <li class="a-script"><svg class="ic"><use href="#i-script"/></svg><b>Test setup</b></li>
+        <li class="a-human"><svg class="ic"><use href="#i-lock"/></svg><b>Release access</b></li>
+        <li class="a-reviewer"><svg class="ic"><use href="#i-agent"/></svg><b>Pilot</b></li>
+      </ol>
+      <ul class="coverage" aria-label="Complete knowledgebase coverage"><li>All features + business rules</li><li>Permissions + services + integrations</li><li>Feature connections + recovery</li><li>Code + tests + past-work evidence</li></ul>
+      <p class="evidence">Complete when the app is covered, claims are validated, and owners resolve unclear rules.</p>
+    </div>
+    <div class="foot-note">
+      <a href="https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/about-protected-branches" target="_blank" rel="noopener">GitHub branch protection</a>
+    </div>
+  </section>
+</main>
+
+<div class="deck">
+  <div class="dk-group">
+    <button type="button" class="dk-btn" id="dkPrev" aria-label="Back">←</button>
+    <span class="dk-pos" id="dkPos">1 / 39</span>
+    <button type="button" class="dk-btn dk-next" id="dkNext">Next <kbd>Space</kbd></button>
+  </div>
+</div>
+<div class="dk-line" id="dkLine"></div>
+<button type="button" class="dk-mode" id="dkMode">Full view</button>
+
+<script>
+(function(){
+  var reduce = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  var body = document.body;
+  function $(id){ return document.getElementById(id); }
+  function each(list, fn){ Array.prototype.forEach.call(list, fn); }
+  function presenting(){ return body.classList.contains('present'); }
+
+  /* ---- hero typewriter (text is already in the DOM; this only replays it) ---- */
+  (function(){
+    var out = $('typeOut'); if (!out || reduce) return;
+    var full = out.textContent, n = 0;
+    out.textContent = '';
+    (function type(){
+      n += 2; out.textContent = full.slice(0, n);
+      if (n < full.length) setTimeout(type, 34);
+    })();
+  })();
+
+  /* ---- timeline in full view: stages fill one after another ---- */
+  (function(){
+    var st = document.querySelectorAll('.tl-stage'); if (!st.length || reduce) return;
+    var k = 0;
+    (function step(){
+      if (presenting()){ each(st, function(s){ s.classList.add('fill'); }); k = 0; return setTimeout(step, 3000); }
+      if (k === 0) each(st, function(s){ s.classList.remove('fill'); });
+      if (k < st.length){ st[k++].classList.add('fill'); setTimeout(step, 1900); }
+      else { k = 0; setTimeout(step, 4500); }
+    })();
+  })();
+
+  /* ---- swimlane flows: one engine, two diagrams ---- */
+  function makeFlow(root, S, SEQ, NOTES){
+    var svg = root.querySelector('svg'), scroller = svg.parentElement;
+    var nodes = svg.querySelectorAll('.node'), edges = svg.querySelectorAll('.edge'), tok = svg.querySelector('.tok');
+    function q(c){ return root.querySelector('.js-' + c); }
+    var stNum = q('num'), stTitle = q('title'), stList = q('list'), stNote = q('note'), btnPlay = q('play'), dots = q('dots');
+    var i = 0, playing = false, userPaused = false, timer = null, raf = null, cur = 0, N = S.length;
+    var api = {N: N, onJump: null};
+    function pad(n){ return (n < 10 ? '0' : '') + n; }
+
+    S.forEach(function(s, n){
+      var b = document.createElement('button');
+      b.type = 'button'; b.textContent = n + 1;
+      b.setAttribute('aria-label', 'Step ' + (n + 1) + ': ' + s.t);
+      b.addEventListener('click', function(){ jump(n); });
+      dots.appendChild(b);
+    });
+
+    function render(n, note){
+      cur = n;
+      each(nodes, function(g){
+        var s = +g.getAttribute('data-step');
+        g.classList.toggle('on', s === n);
+        if (s === n) g.classList.add('seen');
+      });
+      stNum.textContent = pad(n + 1) + ' / ' + pad(N);
+      stTitle.textContent = S[n].t;
+      stList.className = 'bul js-list a-' + S[n].w;
+      stList.textContent = '';
+      S[n].b.forEach(function(x){ var li = document.createElement('li'); li.textContent = x; stList.appendChild(li); });
+      stNote.hidden = !note;
+      stNote.textContent = note ? NOTES[note] : '';
+      each(dots.children, function(d, k){ if (k === n) d.setAttribute('aria-current', 'step'); else d.removeAttribute('aria-current'); });
+    }
+    function clearRun(){
+      if (timer) clearTimeout(timer);
+      if (raf) cancelAnimationFrame(raf);
+      timer = raf = null;
+      each(edges, function(e){ e.classList.remove('on'); });
+      tok.setAttribute('opacity', '0');
+    }
+    function advance(){
+      i = (i + 1) % SEQ.length;
+      if (i === 0) each(nodes, function(g){ g.classList.remove('seen'); });
+      tick();
+    }
+    function tick(){
+      var s = SEQ[i];
+      if (s[0] === 'n'){
+        tok.setAttribute('opacity', '0');
+        render(s[1], s[2]);
+        timer = setTimeout(advance, Math.max(3600, S[s[1]].b.length * 1400));
+      } else {
+        travel(svg.querySelector('[data-e="' + s[1] + '"]'), advance);
+      }
+    }
+    function travel(p, done){
+      var L = p.getTotalLength(), dur = Math.max(380, L * 3), t0 = null;
+      p.classList.add('on');
+      tok.setAttribute('opacity', '1');
+      function frame(ts){
+        if (t0 === null) t0 = ts;
+        var k = Math.min(1, (ts - t0) / dur);
+        var e = k < .5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
+        var pt = p.getPointAtLength(L * e);
+        tok.setAttribute('transform', 'translate(' + pt.x.toFixed(1) + ',' + pt.y.toFixed(1) + ')');
+        if (k < 1) raf = requestAnimationFrame(frame);
+        else { p.classList.remove('on'); tok.setAttribute('opacity', '0'); raf = null; done(); }
+      }
+      raf = requestAnimationFrame(frame);
+    }
+    function setPlaying(p){
+      playing = p;
+      btnPlay.textContent = p ? 'Pause' : 'Play';
+      clearRun();
+      if (SEQ[i][0] === 'e') i = (i + 1) % SEQ.length;
+      render(SEQ[i][1], SEQ[i][2]);
+      if (p) timer = setTimeout(advance, 2400);
+    }
+    function seek(n){ for (var k = 0; k < SEQ.length; k++){ if (SEQ[k][0] === 'n' && SEQ[k][1] === n && !SEQ[k][2]){ i = k; break; } } }
+    function jump(n){
+      userPaused = true;
+      setPlaying(false);
+      seek(n); render(n);
+      var active = svg.querySelector('[data-step="' + n + '"]');
+      if (active && scroller.scrollWidth > scroller.clientWidth){
+        var box = active.getBoundingClientRect(), sb = scroller.getBoundingClientRect();
+        scroller.scrollTo({left: scroller.scrollLeft + box.left - sb.left - (sb.width - box.width) / 2, behavior: reduce ? 'auto' : 'smooth'});
+      }
+      if (api.onJump) api.onJump(n);
+    }
+    /* deck-driven: go to step n, riding the arrow when moving one step forward */
+    api.show = function(n, forward){
+      playing = false; btnPlay.textContent = 'Play';
+      clearRun();
+      if (n === 0) each(nodes, function(g){ g.classList.remove('seen'); });
+      var edge = (forward && !reduce && n === cur + 1) ? svg.querySelector('[data-e="e' + cur + '"]') : null;
+      seek(n);
+      if (edge) travel(edge, function(){ render(n); }); else render(n);
+    };
+    api.stop = function(){ userPaused = true; setPlaying(false); };
+    api.resume = function(){
+      userPaused = false;
+      var r = svg.getBoundingClientRect();
+      if (!reduce && r.bottom > 0 && r.top < window.innerHeight) setPlaying(true);
+    };
+    each(nodes, function(g){
+      var n = +g.getAttribute('data-step');
+      g.addEventListener('click', function(){ jump(n); });
+      g.addEventListener('keydown', function(ev){ if (ev.key === 'Enter'){ ev.preventDefault(); jump(n); } });
+    });
+    q('prev').addEventListener('click', function(){ jump((cur + N - 1) % N); });
+    q('next').addEventListener('click', function(){ jump((cur + 1) % N); });
+    btnPlay.addEventListener('click', function(){ userPaused = playing; setPlaying(!playing); });
+
+    render(0);
+    if (!reduce && 'IntersectionObserver' in window){
+      new IntersectionObserver(function(en){
+        if (presenting()) return;
+        var vis = en[0].isIntersecting;
+        if (vis && !playing && !userPaused) setPlaying(true);
+        else if (!vis && playing) setPlaying(false);
+      }, {threshold: .3}).observe(svg);
+    }
+    return api;
+  }
+
+  var flows = {
+    flow1: makeFlow($('flow1'), [
+      {t:'Give the task', w:'human', b:['What to do and the expected outcome','An example or a way to reproduce it, if there is one']},
+      {t:'Read before writing', w:'builder', b:['Shared instructions, relevant knowledge, code and past work','Connected features, and anything it can reuse','Asks when requirements or access are unclear']},
+      {t:'Build on a separate branch', w:'builder', b:['Define what success looks like','Start from the current staging version','Make the change']},
+      {t:'Test and fix', w:'builder', b:['Automated checks and regression tests','Chrome DevTools MCP → affected journeys in the test account','Confirms background jobs finish','Failed / missing required checks → unverified']},
+      {t:'Update docs, open the PR', w:'builder', b:['Docs + draft changelog entry, or no-change reason','Results and known gaps written into the PR','Planned code checks: type check, tests, build','Docs-only changes: links + structure']},
+      {t:'Repository review + direct fixes', w:'reviewer', b:['Fresh agent, shared instructions, cross-feature review','Fixes findings and merge conflicts directly','Builder checks reviewer edits; CI + review rerun','Stage 1: developer starts this review session']},
+      {t:'Try it on staging', w:'builder', b:['Goes to staging once review and checks pass','Tested together with everything else there']},
+      {t:'Prepare the release', w:'builder', b:['One PR from staging to main','Checks the whole release, including other people’s changes','Hands over the link and stops']},
+      {t:'A human releases', w:'human', b:['Tests staging and reads the evidence','Confirms checks and review are current','Clicks Merge pull request in GitHub']},
+      {t:'Verify and record', w:'builder', b:['App and database deployed correctly','The affected user journey works','Release notes, task record and lessons saved']}
+    ], [['n',0],['e','e0'],['n',1],['e','e1'],['n',2],['e','e2'],['n',3],['e','e3'],['n',4],['e','e4'],
+        ['n',5,'findings'],['e','l1'],['n',3,'fix'],['e','e3'],['n',4],['e','e4'],
+        ['n',5],['e','e5'],['n',6],['e','e6'],['n',7],['e','e7'],['n',8],['e','e8'],['n',9]],
+    {findings: 'The repository reviewer fixes findings and conflicts directly.', fix: 'Builder checks the reviewer edits; tests and review run again.'}),
+
+    flow3: makeFlow($('flow3'), [
+      {t:'A task arrives in Slack', w:'human', b:['Tasks, conversations and feedback in one channel','One tracked task per request, with its thread']},
+      {t:'Plan mode: ask before building', w:'builder', b:['Questions in Slack: goal, scope, examples, edge cases','Focused batches + follow-ups until the important gaps close']},
+      {t:'Checkpoint 1: approve the plan', w:'human', b:['Answer the questions in the Slack thread','Approve the plan in Slack','Implementation starts after approval']},
+      {t:'Agents build, review and fix', w:'builder', b:['Builder implements + tests','Repository reviewer fixes findings directly','Builder checks those edits; checks + review rerun','Both maintain affected docs + changelog']},
+      {t:'Staging deploys by itself', w:'script', b:['Only after checks and review pass','Test link + release summary sent to Slack']},
+      {t:'Checkpoint 2: approve in Slack', w:'human', b:['Test staging using the release message link','Release owner clicks Approve production in Slack','Approval covers the exact tested release','New code → recheck, retest and approve again']},
+      {t:'The release runs by itself', w:'script', b:['Integration verifies the Slack approver + tested version','Separate release identity merges staging → main','Current approval + required checks must pass','Coding agents cannot authorize production']},
+      {t:'Verify and report back', w:'script', b:['App, database and user journey checked','Task outcome + release notes returned to Slack','Deployment failure → notify owner for recovery']}
+    ], [['n',0],['e','e0'],['n',1],['e','e1'],['n',2],['e','e2'],['n',3],['e','e3'],['n',4],['e','e4'],
+        ['n',5,'changes'],['e','lf'],['n',3,'again'],['e','e3'],['n',4],['e','e4'],
+        ['n',5],['e','e5'],['n',6],['e','e6'],['n',7]],
+    {changes: 'Requested fixes go to the repository reviewer.', again: 'Reviewer fixes → independent check → staging retest + Slack approval.'})
+  };
+
+  /* ---- release demo: local illustration only; no GitHub or deployment calls ---- */
+  var demo = (function(){
+    var merge = $('mergeBtn'), late = $('lateBtn'), fail = $('failBtn'), recheck = $('recheckBtn'), failv = $('failvBtn'), reset = $('resetBtn');
+    var whatIf = $('whatIf'), status = $('prStatus'), mergeTxt = $('mergeTxt'), released = $('released');
+    var evs = $('evs').children, chain = $('chain').children, timers = [], state = 'ready';
+    var READY = 'The agent has stopped. Waiting for the human.';
+    function later(fn, ms){ timers.push(setTimeout(fn, reduce ? 0 : ms)); }
+    function stopTimers(){ timers.forEach(clearTimeout); timers = []; }
+    function setStatus(txt, a){ status.textContent = txt; status.className = 'pr-status s-' + a; }
+    function ready(msg){
+      stopTimers(); state = 'ready';
+      each(evs, function(e){ e.className = 'ev ok'; });
+      each(chain, function(c){ c.className = 'ch'; });
+      merge.disabled = false; merge.classList.remove('done'); mergeTxt.textContent = 'Merge pull request';
+      whatIf.hidden = late.hidden = fail.hidden = false;
+      recheck.hidden = failv.hidden = reset.hidden = released.hidden = true;
+      setStatus(msg || READY, 'ok');
+    }
+    function block(msg){
+      state = 'blocked';
+      merge.disabled = true;
+      each(evs, function(e){ e.className = 'ev stale'; });
+      whatIf.hidden = late.hidden = fail.hidden = true;
+      recheck.hidden = false;
+      setStatus(msg, 'warn');
+    }
+    function run(failing){
+      stopTimers(); state = 'running';
+      each(evs, function(e){ e.className = 'ev ok'; });
+      merge.disabled = true; merge.classList.add('done'); mergeTxt.textContent = 'Merged by the release owner';
+      whatIf.hidden = late.hidden = fail.hidden = recheck.hidden = failv.hidden = reset.hidden = released.hidden = true;
+      each(chain, function(c){ c.className = 'ch'; });
+      setStatus('Demo: merged. Deployment and verification are still pending.', 'warn');
+      var k = 0;
+      (function next(){
+        if (k > 0) chain[k - 1].className = 'ch ok';
+        if (failing && k === 3){
+          chain[3].className = 'ch bad'; state = 'failed'; reset.hidden = false;
+          setStatus('Demo: verification failed. Deployment may be partial; the owner follows the recovery plan.', 'warn');
+          return;
+        }
+        if (k < chain.length){ chain[k].className = 'ch run'; k++; later(next, 850); }
+        else {
+          state = 'verified'; released.hidden = false; reset.hidden = false; failv.hidden = false;
+          setStatus('Demo outcome: released, verified and recorded.', 'ok');
+        }
+      })();
+    }
+    late.addEventListener('click', function(){ if (state === 'ready') block('New code arrived. The earlier approval no longer counts.'); });
+    fail.addEventListener('click', function(){ if (state === 'ready') block('A required check failed or is missing. Unverified, so no merge.'); });
+    recheck.addEventListener('click', function(){ if (state === 'blocked') ready('Checks and review passed again. Waiting for the human.'); });
+    merge.addEventListener('click', function(){ if (state === 'ready') run(false); });
+    failv.addEventListener('click', function(){ if (state === 'verified') run(true); });
+    reset.addEventListener('click', function(){ ready(); });
+    return {ready: ready, run: function(){ run(false); }};
+  })();
+
+  /* ---- structure: cards <-> tree ---- */
+  (function(){
+    var tree = $('tree'), kit = $('kit'), pinned = null, btns = kit.querySelectorAll('button');
+    function light(g){
+      each(tree.querySelectorAll('.hit'), function(el){ el.classList.remove('hit'); });
+      tree.classList.toggle('filtering', !!g);
+      if (!g) return;
+      each(tree.querySelectorAll('[data-g="' + g + '"]'), function(el){
+        el.classList.add('hit');
+        var d = el.parentNode;
+        while (d && d !== tree){ if (d.tagName === 'DETAILS') d.open = true; d = d.parentNode; }
+      });
+    }
+    each(btns, function(b){
+      var g = b.getAttribute('data-g');
+      b.addEventListener('mouseenter', function(){ light(g); });
+      b.addEventListener('mouseleave', function(){ light(pinned); });
+      b.addEventListener('focus', function(){ light(g); });
+      b.addEventListener('blur', function(){ light(pinned); });
+      b.addEventListener('click', function(){
+        pinned = pinned === g ? null : g;
+        each(btns, function(x){ x.setAttribute('aria-pressed', x.getAttribute('data-g') === pinned ? 'true' : 'false'); });
+        light(pinned);
+      });
+    });
+  })();
+
+  /* ---- deck: Space / arrows reveal one piece at a time; full view is the scrolling page ---- */
+  (function(){
+    var els = document.querySelectorAll('.slide'), slides = [], SI = 0, K = 0, total = 0;
+    var prevBtn = $('dkPrev'), nextBtn = $('dkNext'), pos = $('dkPos'), line = $('dkLine'), modeBtn = $('dkMode');
+
+    each(els, function(el){
+      var kind = el.getAttribute('data-kind'), revs = el.querySelectorAll('[data-rev]');
+      var s = {el: el, count: revs.length, set: function(k){ each(revs, function(r, j){ r.classList.toggle('shown', j < k); }); }};
+      if (flows[kind]){
+        var f = flows[kind];
+        s.count = f.N - 1;
+        s.set = function(k, forward){ f.show(k, forward); };
+        f.onJump = function(n){ if (presenting()){ K = n; paint(); } };
+      } else if (kind === 'demo'){
+        s.count = 1;
+        s.set = function(k){ if (k === 0) demo.ready(); else demo.run(); };
+      }
+      total += s.count + 1;
+      slides.push(s);
+    });
+
+    function paint(){
+      var done = K + 1;
+      for (var j = 0; j < SI; j++) done += slides[j].count + 1;
+      pos.textContent = done + ' / ' + total;
+      line.style.width = (100 * done / total) + '%';
+      prevBtn.disabled = SI === 0 && K === 0;
+      nextBtn.disabled = SI === slides.length - 1 && K === slides[SI].count;
+    }
+    function go(si, k, forward){
+      var changed = si !== SI;
+      SI = si; K = k;
+      each(els, function(el, j){ el.classList.toggle('cur', j === SI); });
+      slides[SI].set(K, forward);
+      if (changed) window.scrollTo(0, 0);
+      paint();
+    }
+    function next(){
+      if (K < slides[SI].count) go(SI, K + 1, true);
+      else if (SI < slides.length - 1) go(SI + 1, 0, true);
+    }
+    function back(){
+      if (K > 0) go(SI, K - 1, false);
+      else if (SI > 0) go(SI - 1, slides[SI - 1].count, false);
+    }
+    function slideFor(id){
+      var t = $(id), idx = 0;
+      each(els, function(el, j){ if (!idx && (el === t || t.contains(el))) idx = j; });
+      return idx;
+    }
+    function setMode(present){
+      if (present){
+        var near = 0;
+        if (!presenting()) each(els, function(el, j){ if (el.getBoundingClientRect().top < window.innerHeight * .4) near = j; });
+        else near = SI;
+        body.classList.add('present');
+        flows.flow1.stop(); flows.flow3.stop();
+        SI = -1; go(near, 0, false);
+      } else {
+        body.classList.remove('present');
+        demo.ready();
+        els[SI].scrollIntoView({block: 'start'});
+        flows.flow1.resume(); flows.flow3.resume();
+      }
+      modeBtn.textContent = present ? 'Full view' : 'Step by step';
+      try { localStorage.setItem('fr-mode', present ? 'deck' : 'full'); } catch (e) {}
+    }
+
+    nextBtn.addEventListener('click', next);
+    prevBtn.addEventListener('click', back);
+    modeBtn.addEventListener('click', function(){ setMode(!presenting()); });
+    each(document.querySelectorAll('[data-to]'), function(b){
+      b.addEventListener('click', function(){
+        var id = b.getAttribute('data-to');
+        if (presenting()) go(slideFor(id), 0, true);
+        else $(id).scrollIntoView({behavior: reduce ? 'auto' : 'smooth', block: 'start'});
+      });
+    });
+    document.addEventListener('keydown', function(e){
+      if (!presenting() || e.metaKey || e.ctrlKey || e.altKey) return;
+      var k = e.key, fwd = k === 'ArrowRight' || k === 'PageDown' || ((k === ' ' || k === 'Spacebar') && !e.shiftKey);
+      var bwd = k === 'ArrowLeft' || k === 'PageUp' || ((k === ' ' || k === 'Spacebar') && e.shiftKey);
+      if (!fwd && !bwd) return;
+      e.preventDefault();
+      var a = document.activeElement;
+      if (a && a !== body && a.blur) a.blur();
+      if (fwd) next(); else back();
+    });
+
+    if (presenting()){ modeBtn.textContent = 'Full view'; flows.flow1.stop(); flows.flow3.stop(); SI = -1; go(0, 0, false); }
+    else { modeBtn.textContent = 'Step by step'; paint(); }
+  })();
+})();
+</script>
+</body>
+</html>
